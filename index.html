@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Gerencial com Filtros Inteligentes</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <!-- PapaParse -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <!-- SortableJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #111827; color: #f3f4f6; }
+        .card { background-color: #1f2937; border: 1px solid #374151; border-radius: 0.75rem; padding: 1.5rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+        .draggable-card { cursor: move; }
+        .sortable-ghost { background-color: #374151; opacity: 0.5; }
+        .chart-container { height: 400px; }
+        table thead { background-color: #374151; }
+        .filter-input, .login-input { background-color: #374151; border: 1px solid #4b5563; color: #d1d5db; border-radius: 0.5rem; padding: 0.75rem 1rem; color-scheme: dark; }
+        .action-button { color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; transition: background-color 0.2s; font-weight: 500; }
+        .today-button, .login-button { background-color: #0d9488; } .today-button:hover, .login-button:hover { background-color: #0f766e; }
+        .clear-button { background-color: #4b5563; } .clear-button:hover { background-color: #6b7280; }
+        .toggle-filters-button { background-color: #374151; border: 1px solid #4b5563; } .toggle-filters-button:hover { background-color: #4b5563; }
+        #loadingSpinner { border-top-color: #3498db; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .sort-icon { color: #6b7280; transition: transform 0.2s, color 0.2s; flex-shrink: 0; }
+        .sortable.sorted .sort-icon { color: #3b82f6; }
+        .sortable.sorted.asc .sort-icon { transform: rotate(180deg); }
+        .autocomplete-container { position: relative; }
+        .suggestions-list { position: absolute; top: 100%; left: 0; right: 0; background-color: #374151; border: 1px solid #4b5563; border-radius: 0.5rem; margin-top: 0.25rem; max-height: 200px; overflow-y: auto; z-index: 10; }
+        .suggestion-item { padding: 0.5rem 0.75rem; cursor: pointer; color: #d1d5db; }
+        .suggestion-item:hover { background-color: #4b5563; }
+        .line-clamp-2 { overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    </style>
+</head>
+<body class="p-4 sm:p-6 md:p-8">
+
+    <!-- ==== TELA DE LOGIN ==== -->
+    <div id="loginContainer" class="min-h-screen flex flex-col items-center justify-center">
+        <div class="w-full max-w-md">
+            <div class="card p-8">
+                <h2 class="text-2xl font-bold text-white text-center mb-6">Acesso ao Dashboard</h2>
+                <form id="loginForm">
+                    <div class="mb-4">
+                        <label for="username" class="block text-sm font-medium text-gray-300 mb-2">Nome de Utilizador</label>
+                        <input type="text" id="username" name="username" class="login-input w-full" required>
+                    </div>
+                    <div class="mb-6">
+                        <label for="password" class="block text-sm font-medium text-gray-300 mb-2">Senha</label>
+                        <input type="password" id="password" name="password" class="login-input w-full" required>
+                    </div>
+                    <div id="loginMessage" class="text-red-400 text-center text-sm mb-4 h-5"></div>
+                    <button type="submit" id="loginButton" class="login-button w-full flex items-center justify-center py-3">
+                        <span id="loginButtonText">Entrar</span>
+                        <div id="loginSpinner" class="hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==== CONTAINER DO DASHBOARD (INICIALMENTE OCULTO) ==== -->
+    <div id="dashboardContainer" class="hidden">
+        <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50"><div id="loadingSpinner" class="w-16 h-16 border-4 border-gray-700 rounded-full"></div></div>
+
+        <div class="max-w-7xl mx-auto">
+            <header class="mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <h1 class="text-2xl sm:text-3xl font-bold text-white text-center sm:text-left">Dashboard de Análise de Apostas</h1>
+                <button id="toggleFiltersBtn" class="action-button toggle-filters-button flex items-center gap-2 w-full sm:w-auto justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 12.414V17a1 1 0 01-1.447.894l-2-1A1 1 0 018 16v-3.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" /></svg>
+                    <span id="toggleFiltersBtnText">Exibir Filtros e Opções</span>
+                </button>
+            </header>
+
+            <div id="filtersContainer" class="hidden grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8"><!-- Conteúdo dos filtros será inserido via JS --></div>
+            <div id="dashboard-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6"><!-- Conteúdo dos cards e gráficos será inserido via JS --></div>
+            <div id="table-container" class="card mt-8"><!-- Conteúdo da tabela detalhada será inserido via JS --></div>
+        </div>
+        
+        <div id="summaryModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden"><!-- Conteúdo do modal de resumo será inserido via JS --></div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // =================================================================
+            // ETAPA 1: LÓGICA DE LOGIN (MÉTODO SEGURO: POST)
+            // =================================================================
+            const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxQ85fbGnRj9sWcBCgtG_amdYL9FysuojwFjlzAnB2F-Rymeuu-mdty7FWUM9yRG_2DAw/exec';
+            
+            const loginForm = document.getElementById('loginForm');
+            const loginButton = document.getElementById('loginButton');
+            const loginButtonText = document.getElementById('loginButtonText');
+            const loginSpinner = document.getElementById('loginSpinner');
+            const loginMessage = document.getElementById('loginMessage');
+            const loginContainer = document.getElementById('loginContainer');
+            const dashboardContainer = document.getElementById('dashboardContainer');
+
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                loginMessage.textContent = '';
+                loginButtonText.classList.add('hidden');
+                loginSpinner.classList.remove('hidden');
+                loginButton.disabled = true;
+
+                const username = document.getElementById('username').value;
+                const password = document.getElementById('password').value;
+
+                try {
+                    // Busca o IP do usuário primeiro
+                    const ipResponse = await fetch('https://api.ipify.org?format=json');
+                    const ipData = await ipResponse.json();
+                    const userIp = ipData.ip || 'não encontrado';
+
+                    // ===== MUDANÇA PRINCIPAL: Usando o método POST =====
+                    const response = await fetch(APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        // O cabeçalho é opcional para text/plain, mas é uma boa prática
+                        headers: {
+                          'Content-Type': 'text/plain;charset=utf-8', 
+                        },
+                        // Os dados são enviados no 'body', não na URL
+                        body: JSON.stringify({
+                          nome: username,
+                          senha: password,
+                          ip: userIp
+                        })
+                    });
+                    
+                    const result = await response.json();
+
+                    if (result.status === 'success') {
+                        loginContainer.classList.add('hidden');
+                        dashboardContainer.classList.remove('hidden');
+                        fetchData(result.dataSheetUrl);
+                    } else {
+                        throw new Error(result.message || 'Falha na autenticação.');
+                    }
+                } catch (error) {
+                    loginMessage.textContent = "Erro: " + error.message;
+                    loginButtonText.classList.remove('hidden');
+                    loginSpinner.classList.add('hidden');
+                    loginButton.disabled = false;
+                }
+            });
+
+            // =================================================================
+            // ETAPA 2: LÓGICA DO DASHBOARD (Permanece a mesma)
+            // =================================================================
+            let fullData = [], currentTableData = [];
+            let chartInstances = {};
+            let sortState = { column: 'data', direction: 'desc' };
+            let availablePaises = new Set(), availableCompeticoes = new Set(), availablePartidas = new Set();
+            let paisFilterInput, competicaoFilterInput, partidaFilterInput;
+            let paisSuggestions, competicaoSuggestions, partidaSuggestions;
+
+            // FUNÇÕES AUXILIARES
+            const formatCurrency = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+            const formatPercent = (v) => new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 2 }).format(v);
+            
+            const parseDate = (d) => {
+                if (!d || typeof d !== 'string') return null;
+                if (/^\d{4}-\d{2}-\d{2}$/.test(d)) { const [year, month, day] = d.split('-'); return new Date(Date.UTC(year, month - 1, day)); }
+                if (/^\d{2}\/\d{2}\/\d{4}$/.test(d)) { const [day, month, year] = d.split('/'); return new Date(Date.UTC(year, month - 1, day)); }
+                return null;
+            };
+
+            const formatDateForDisplay = (dateObj) => {
+                if (!dateObj || !(dateObj instanceof Date) || isNaN(dateObj)) return 'N/A';
+                const day = String(dateObj.getUTCDate()).padStart(2, '0');
+                const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+                const year = dateObj.getUTCFullYear();
+                return `${day}/${month}/${year}`;
+            };
+            
+            // FUNÇÃO PRINCIPAL DE CARREGAMENTO DE DADOS
+            const fetchData = (googleSheetUrl) => {
+                populateDashboardHTML();
+
+                Papa.parse(googleSheetUrl, {
+                    download: true, header: true, skipEmptyLines: true,
+                    complete: (results) => {
+                        fullData = results.data.map(row => ({
+                            dateObject: parseDate(row['Data']),
+                            data: formatDateForDisplay(parseDate(row['Data'])),
+                            esporte: row['Esporte'] || 'N/A',
+                            pais: row['Pais'] || 'N/A',
+                            competicao: row['Competicao'] || 'N/A',
+                            partida: row['Partida'] || 'N/A',
+                            quantidadeApostas: parseInt(row['Quantidade Apostas'], 10) || 0,
+                            valorApostado: parseFloat(row['Valor Apostado']) || 0,
+                            ggr: parseFloat(row['GGR']) || 0,
+                            rentabilidade: parseFloat(row['Rentabilidade']) || 0
+                        }));
+                        
+                        initializeDashboard();
+                        document.getElementById('loadingOverlay').style.display = 'none';
+                    },
+                    error: (err) => {
+                        console.error("Erro ao buscar dados do Google Sheet:", err);
+                        alert("Não foi possível carregar os dados do dashboard. Verifique a consola para mais detalhes.");
+                    }
+                });
+            };
+
+            // INICIALIZAÇÃO E EVENTOS DO DASHBOARD
+            const initializeDashboard = () => {
+                paisFilterInput = document.getElementById('paisFilter');
+                competicaoFilterInput = document.getElementById('competicaoFilter');
+                partidaFilterInput = document.getElementById('partidaFilter');
+                paisSuggestions = document.getElementById('paisSuggestions');
+                competicaoSuggestions = document.getElementById('competicaoSuggestions');
+                partidaSuggestions = document.getElementById('partidaSuggestions');
+
+                document.getElementById('toggleFiltersBtn').addEventListener('click', () => {
+                    const container = document.getElementById('filtersContainer');
+                    const btnText = document.getElementById('toggleFiltersBtnText');
+                    container.classList.toggle('hidden');
+                    btnText.textContent = container.classList.contains('hidden') ? 'Exibir Filtros e Opções' : 'Ocultar Filtros e Opções';
+                });
+
+                document.getElementById('sportFilter').addEventListener('change', runFilters);
+                document.getElementById('startDate').addEventListener('change', runFilters);
+                document.getElementById('endDate').addEventListener('change', runFilters);
+                document.getElementById('todayButton').addEventListener('click', filterToday);
+                document.getElementById('clearButton').addEventListener('click', clearAllFilters);
+                document.querySelectorAll('.sortable').forEach(header => header.addEventListener('click', handleSort));
+                document.getElementById('summaryModalClose').addEventListener('click', () => document.getElementById('summaryModal').classList.add('hidden'));
+                document.getElementById('summaryModal').addEventListener('click', (e) => { if (e.target === document.getElementById('summaryModal')) document.getElementById('summaryModal').classList.add('hidden'); });
+                document.querySelectorAll('#chartSelector input').forEach(checkbox => checkbox.addEventListener('change', runFilters));
+                document.querySelectorAll('.remove-chart-btn').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const chartId = e.currentTarget.dataset.chartId;
+                        document.querySelector(`input[name="chartToggle"][value="${chartId}"]`).checked = false;
+                        runFilters();
+                    });
+                });
+                document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
+                
+                paisFilterInput.addEventListener('input', runFilters);
+                competicaoFilterInput.addEventListener('input', runFilters);
+                partidaFilterInput.addEventListener('input', runFilters);
+                
+                populateSportFilter();
+                
+                const grid = document.getElementById('dashboard-grid');
+                new Sortable(grid, { animation: 150, handle: '.draggable-card', ghostClass: 'sortable-ghost' });
+
+                setupAutocomplete(paisFilterInput, paisSuggestions, () => Array.from(availablePaises));
+                setupAutocomplete(competicaoFilterInput, competicaoSuggestions, () => Array.from(availableCompeticoes));
+                setupAutocomplete(partidaFilterInput, partidaSuggestions, () => Array.from(availablePartidas));
+
+                document.addEventListener('click', (e) => { if (!e.target.closest('.autocomplete-container')) { hideAllSuggestions(); } });
+
+                runFilters();
+            };
+
+            const populateSportFilter = () => {
+                const sportFilter = document.getElementById('sportFilter');
+                const sports = ['Todos os Desportos', ...new Set(fullData.map(d => d.esporte).filter(Boolean))];
+                sportFilter.innerHTML = sports.map(sport => `<option value="${sport}">${sport}</option>`).join('');
+            };
+            
+            const handleSort = (e) => {
+                const column = e.currentTarget.dataset.column;
+                sortState.direction = (sortState.column === column && sortState.direction === 'desc') ? 'asc' : 'desc';
+                sortState.column = column;
+                runFilters();
+            };
+
+            const setupAutocomplete = (input, suggestionsContainer, getSuggestions) => {
+                const displayHandler = () => {
+                    const query = input.value.toLowerCase();
+                    const suggestions = getSuggestions().filter(s => s && s.toLowerCase().includes(query));
+                    displaySuggestions(suggestions, suggestionsContainer, input);
+                };
+                input.addEventListener('input', displayHandler);
+                input.addEventListener('focus', displayHandler);
+            };
+
+            const displaySuggestions = (suggestions, container, input) => {
+                container.innerHTML = '';
+                if (suggestions.length === 0) { container.classList.add('hidden'); return; }
+                suggestions.slice(0, 50).forEach(suggestion => {
+                    const item = document.createElement('div');
+                    item.className = 'suggestion-item';
+                    item.textContent = suggestion;
+                    item.addEventListener('click', () => {
+                        input.value = suggestion;
+                        container.classList.add('hidden');
+                        runFilters();
+                    });
+                    container.appendChild(item);
+                });
+                container.classList.remove('hidden');
+            };
+
+            const hideAllSuggestions = () => {
+                if (paisSuggestions) paisSuggestions.classList.add('hidden');
+                if (competicaoSuggestions) competicaoSuggestions.classList.add('hidden');
+                if (partidaSuggestions) partidaSuggestions.classList.add('hidden');
+            };
+            
+            const runFilters = () => {
+                let filteredData = fullData;
+
+                const selectedSport = document.getElementById('sportFilter').value;
+                if (selectedSport && selectedSport !== 'Todos os Desportos') {
+                    filteredData = filteredData.filter(row => row.esporte === selectedSport);
+                }
+
+                const startDateStr = document.getElementById('startDate').value;
+                const endDateStr = document.getElementById('endDate').value;
+                if (startDateStr && endDateStr) {
+                    const startDate = new Date(startDateStr + 'T00:00:00Z');
+                    const endDate = new Date(endDateStr + 'T23:59:59Z');
+                    filteredData = filteredData.filter(row => row.dateObject && row.dateObject >= startDate && row.dateObject <= endDate);
+                }
+                
+                availablePaises = new Set(filteredData.map(d => d.pais).filter(Boolean));
+                availableCompeticoes = new Set(filteredData.map(d => d.competicao).filter(Boolean));
+                availablePartidas = new Set(filteredData.map(d => d.partida).filter(Boolean));
+
+                const paisQuery = document.getElementById('paisFilter').value.toLowerCase();
+                const competicaoQuery = document.getElementById('competicaoFilter').value.toLowerCase();
+                const partidaQuery = document.getElementById('partidaFilter').value.toLowerCase();
+                
+                let tableFilteredData = filteredData;
+                if (paisQuery) tableFilteredData = tableFilteredData.filter(r => r.pais && r.pais.toLowerCase().includes(paisQuery));
+                if (competicaoQuery) tableFilteredData = tableFilteredData.filter(r => r.competicao && r.competicao.toLowerCase().includes(competicaoQuery));
+                if (partidaQuery) tableFilteredData = tableFilteredData.filter(r => r.partida && r.partida.toLowerCase().includes(partidaQuery));
+
+                currentTableData = sortData(tableFilteredData, sortState);
+                updateDashboard(filteredData, currentTableData, startDateStr, endDateStr);
+            };
+
+            const sortData = (data, state) => {
+                const { column, direction } = state;
+                return [...data].sort((a, b) => {
+                    let valA = column === 'data' ? a.dateObject : a[column];
+                    let valB = column === 'data' ? b.dateObject : b[column];
+                    if (valA < valB) return direction === 'asc' ? -1 : 1;
+                    if (valA > valB) return direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+            };
+            
+            const filterToday = () => {
+                const today = new Date();
+                const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                document.getElementById('startDate').value = todayStr;
+                document.getElementById('endDate').value = todayStr;
+                runFilters();
+            };
+
+            const clearAllFilters = () => {
+                document.getElementById('sportFilter').value = 'Todos os Desportos';
+                document.getElementById('startDate').value = ''; document.getElementById('endDate').value = '';
+                document.getElementById('paisFilter').value = ''; document.getElementById('competicaoFilter').value = ''; document.getElementById('partidaFilter').value = '';
+                sortState = { column: 'data', direction: 'desc' };
+                runFilters();
+            };
+
+            const updateDashboard = (chartData, tableData, startDateStr, endDateStr) => {
+                updateKPIs(chartData);
+                updateHighlights(chartData);
+                updateChartTitles(startDateStr, endDateStr);
+
+                const selectedCharts = [...document.querySelectorAll('#chartSelector input:checked')].map(cb => cb.value);
+                Object.keys(chartInstances).forEach(key => {
+                    if (chartInstances[key]) chartInstances[key].destroy();
+                    delete chartInstances[key];
+                    document.getElementById(`${key}Card`).classList.add('hidden');
+                });
+                
+                if (selectedCharts.includes('ggrPorCompeticao')) createGGRChart(chartData);
+                if (selectedCharts.includes('participacaoPais')) createPaisChart(chartData);
+                if (selectedCharts.includes('ggrTrend')) createGGRTrendChart(chartData);
+                if (selectedCharts.includes('performanceCompeticao')) createPerformanceChart(chartData);
+                
+                populateTable(tableData);
+                updateSortHeaders();
+            };
+            
+            const updateSortHeaders = () => {
+                document.querySelectorAll('.sortable').forEach(header => {
+                    header.classList.remove('sorted', 'asc', 'desc');
+                    if (header.dataset.column === sortState.column) header.classList.add('sorted', sortState.direction);
+                });
+            };
+
+            const updateKPIs = (data) => {
+                const valor = data.reduce((s, r) => s + r.valorApostado, 0);
+                const ggr = data.reduce((s, r) => s + r.ggr, 0);
+                const rentabilidade = valor > 0 ? ggr / valor : 0;
+                document.getElementById('totalValorApostado').textContent = formatCurrency(valor);
+                document.getElementById('totalGGR').textContent = formatCurrency(ggr);
+                document.getElementById('rentabilidadeMedia').textContent = formatPercent(rentabilidade);
+            };
+            
+            const updateHighlights = (data) => {
+                const byPartida = data.reduce((acc, row) => {
+                    if(!row.partida) return acc;
+                    if(!acc[row.partida]) acc[row.partida] = { ggr: 0, valor: 0 };
+                    acc[row.partida].ggr += row.ggr; acc[row.partida].valor += row.valorApostado;
+                    return acc;
+                }, {});
+
+                const performanceScores = Object.entries(byPartida).map(([name, values]) => ({ name, score: (values.valor > 0 ? values.ggr / values.valor : 0) * Math.log10(values.valor + 1) })).filter(item => isFinite(item.score) && item.score !== 0).sort((a,b) => b.score - a.score);
+                
+                const melhorEl = document.getElementById('highlightMelhorPerformance');
+                const piorEl = document.getElementById('highlightPiorPerformance');
+
+                melhorEl.textContent = performanceScores.length > 0 ? performanceScores[0].name : 'N/A';
+                melhorEl.title = performanceScores.length > 0 ? performanceScores[0].name : '';
+                piorEl.textContent = performanceScores.length > 0 ? performanceScores[performanceScores.length - 1].name : 'N/A';
+                piorEl.title = performanceScores.length > 0 ? performanceScores[performanceScores.length - 1].name : '';
+
+                const byPais = data.reduce((acc, row) => { if(row.pais) acc[row.pais] = (acc[row.pais] || 0) + row.valorApostado; return acc; }, {});
+                const paisesOrdenados = Object.entries(byPais).sort(([,a],[,b]) => b-a);
+                document.getElementById('highlightMaiorVolume').textContent = paisesOrdenados.length > 0 ? paisesOrdenados[0][0] : 'N/A';
+            };
+            
+            const updateChartTitles = (startDateStr, endDateStr) => {
+                const formatDisplayDate = (d) => {
+                    if (!d) return '';
+                    const date = new Date(d + 'T00:00:00Z');
+                    return `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+                };
+                let dateSubtitle = (startDateStr && endDateStr) ? (startDateStr === endDateStr ? ` - Dia ${formatDisplayDate(startDateStr)}` : ` (${formatDisplayDate(startDateStr)} - ${formatDisplayDate(endDateStr)})`) : '';
+                document.querySelector('#ggrPorCompeticaoCard h3').textContent = 'GGR por Competição' + dateSubtitle;
+                document.querySelector('#participacaoPaisCard h3').textContent = 'Participação por País (Nº Apostas)' + dateSubtitle;
+                document.querySelector('#ggrTrendCard h3').textContent = 'Tendência de GGR vs. Valor Apostado' + dateSubtitle;
+                document.querySelector('#performanceCompeticaoCard h3').textContent = 'Top 5 Competições por Performance' + dateSubtitle;
+            };
+
+            const createChart = (id, cardId, config) => {
+                 document.getElementById(cardId).classList.remove('hidden');
+                 chartInstances[id.replace('Chart', '')] = new Chart(document.getElementById(id).getContext('2d'), config);
+            };
+
+            const createGGRChart = (data) => {
+                const byCompeticao = data.reduce((acc, r) => { 
+                    if(r.competicao && r.pais) { const key = `${r.pais} - ${r.competicao}`; if(!acc[key]) acc[key] = { ggr: 0, valor: 0 }; acc[key].ggr += r.ggr; acc[key].valor += r.valorApostado; } return acc; }, {});
+                const sorted = Object.entries(byCompeticao).sort(([,a],[,b]) => b.ggr - a.ggr).slice(0,10);
+                const gradient = document.getElementById('ggrPorCompeticaoChart').getContext('2d').createLinearGradient(0, 0, 0, 400);
+                gradient.addColorStop(0, 'rgba(52, 211, 153, 0.7)'); gradient.addColorStop(1, 'rgba(16, 185, 129, 0.1)');
+                createChart('ggrPorCompeticaoChart', 'ggrPorCompeticaoCard', { type: 'bar', data: { labels: sorted.map(i=>i[0]), datasets: [{ label: 'GGR', data: sorted.map(i=>i[1].ggr), backgroundColor: gradient, borderColor: '#34d399', borderWidth: 1, borderRadius: 5 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#111827', callbacks: { label: (c) => [`GGR: ${formatCurrency(sorted[c.dataIndex][1].ggr)}`, `Rentabilidade: ${formatPercent(sorted[c.dataIndex][1].valor > 0 ? sorted[c.dataIndex][1].ggr / sorted[c.dataIndex][1].valor : 0)}`, `Volume: ${formatCurrency(sorted[c.dataIndex][1].valor)}`] } } }, scales: { y: { ticks: { color: '#9ca3af', callback: v => formatCurrency(v) }, grid: { color: '#374151' } }, x: { ticks: { color: '#9ca3af' }, grid: { color: 'transparent' } } } } });
+            };
+
+            const createPaisChart = (data) => {
+                const byPais = data.reduce((acc, r) => { if(r.pais) acc[r.pais] = (acc[r.pais] || 0) + r.quantidadeApostas; return acc; }, {});
+                const sorted = Object.entries(byPais).sort(([,a],[,b]) => b-a);
+                const totalApostas = sorted.reduce((sum, item) => sum + item[1], 0);
+                createChart('participacaoPaisChart', 'participacaoPaisCard', { type: 'doughnut', data: { labels: sorted.map(i=>i[0]), datasets: [{ data: sorted.map(i=>i[1]), backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#60a5fa', '#f87171'], borderWidth: 2, borderColor: '#1f2937'}] }, options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { color: '#d1d5db' } }, tooltip: { backgroundColor: '#111827', callbacks: { label: (c) => ` ${c.label}: ${c.raw} apostas`, afterLabel: (c) => `Participação: ${formatPercent(c.raw / totalApostas)}` } } } } });
+            };
+
+            const createGGRTrendChart = (data) => {
+                const groupedByDay = data.reduce((acc, row) => { if(!row.dateObject) return acc; const day = row.dateObject.toISOString().split('T')[0]; if(!acc[day]) acc[day] = { ggr: 0, valor: 0 }; acc[day].ggr += row.ggr; acc[day].valor += row.valorApostado; return acc; }, {});
+                const sortedDays = Object.keys(groupedByDay).sort();
+                createChart('ggrTrendChart', 'ggrTrendCard', { type: 'line', data: { labels: sortedDays, datasets: [ { label: 'GGR', data: sortedDays.map(d => groupedByDay[d].ggr), borderColor: '#34d399', backgroundColor: '#34d39920', yAxisID: 'yGGR', tension: 0.2, pointBackgroundColor: '#34d399', pointRadius: 3 }, { label: 'Valor Apostado', data: sortedDays.map(d => groupedByDay[d].valor), borderColor: '#60a5fa', backgroundColor: '#60a5fa20', yAxisID: 'yValor', tension: 0.2, pointBackgroundColor: '#60a5fa', pointRadius: 3 } ] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day', tooltipFormat: 'dd/MM/yyyy' }, ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }, yGGR: { position: 'left', ticks: { color: '#9ca3af', callback: v => formatCurrency(v) }, grid: { color: '#374151' } }, yValor: { position: 'right', ticks: { color: '#9ca3af', callback: v => formatCurrency(v) }, grid: { drawOnChartArea: false } } }, plugins: { legend: { labels: { color: '#d1d5db' } }, tooltip: { backgroundColor: '#111827' } } } });
+            };
+            
+            const createPerformanceChart = (data) => {
+                 const byCompeticao = data.reduce((acc, row) => { if(row.competicao && row.pais) { const key = `${r.pais} - ${r.competicao}`; if(!acc[key]) acc[key] = { ggr: 0, valor: 0 }; acc[key].ggr += row.ggr; acc[key].valor += row.valorApostado; } return acc; }, {});
+                 const performanceScores = Object.entries(byCompeticao).map(([name, values]) => ({ name, score: (values.valor > 0 ? values.ggr / values.valor : 0) * Math.log10(values.valor + 1), rentabilidade: values.valor > 0 ? values.ggr / values.valor : 0, valor: values.valor })).filter(item => isFinite(item.score)).sort((a,b) => b.score - a.score);
+                 const top5 = performanceScores.slice(0, 5);
+                 const gradient = document.getElementById('performanceCompeticaoChart').getContext('2d').createLinearGradient(0, 0, 600, 0);
+                 gradient.addColorStop(0, 'rgba(59, 130, 246, 0.1)'); gradient.addColorStop(1, 'rgba(59, 130, 246, 0.7)');
+                 createChart('performanceCompeticaoChart', 'performanceCompeticaoCard', { type: 'bar', data: { labels: top5.map(c => c.name), datasets: [{ label: 'Índice de Performance', data: top5.map(c => c.score), backgroundColor: gradient, borderColor: '#3b82f6', borderWidth: 1, borderRadius: 5 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#111827', callbacks: { title: (c) => c[0].label, label: (c) => { const i = top5[c.dataIndex]; return [`Índice: ${i.score.toFixed(2)}`, `Rentab.: ${formatPercent(i.rentabilidade)}`, `Volume: ${formatCurrency(i.valor)}` ]; } } } }, scales: { x: { ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }, y: { ticks: { color: '#9ca3af' } } } } });
+            };
+
+            const populateTable = (data, showAll = false) => {
+                const tableBody = document.getElementById('dataTableBody');
+                tableBody.innerHTML = '';
+                const dataToShow = showAll ? data : data.slice(0, 8);
+                dataToShow.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-b border-gray-700 hover:bg-gray-700/50';
+                    tr.innerHTML = `<td class="px-4 py-3">${row.data||'N/A'}</td><td class="px-4 py-3">${row.esporte||'N/A'}</td><td class="px-4 py-3">${row.pais||'N/A'}</td><td class="px-4 py-3">${row.competicao||'N/A'}</td><td class="px-4 py-3 font-medium text-white"><div class="flex items-center justify-between"><span class="pr-2">${row.partida || 'N/A'}</span><button class="show-summary-btn p-1 rounded-full hover:bg-gray-600 focus:outline-none" data-partida="${row.partida}"><svg class="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg></button></div></td><td class="px-4 py-3 text-right">${row.quantidadeApostas}</td><td class="px-4 py-3 text-right">${formatCurrency(row.valorApostado)}</td><td class="px-4 py-3 text-right ${row.ggr>=0?'text-green-400':'text-red-400'}">${formatCurrency(row.ggr)}</td><td class="px-4 py-3 text-right ${row.rentabilidade>=0?'text-blue-400':'text-red-400'}">${formatPercent(row.rentabilidade)}</td>`;
+                    tableBody.appendChild(tr);
+                });
+                document.querySelectorAll('.show-summary-btn').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); showMatchSummary(e.currentTarget.dataset.partida); }));
+                if (!showAll && data.length > 8) {
+                    const showMoreRow = document.createElement('tr');
+                    showMoreRow.innerHTML = `<td colspan="9" class="text-center py-4"><button id="showMoreBtn" class="text-blue-400 hover:text-blue-300 font-semibold focus:outline-none">Mostrar mais ${data.length - 8} resultados...</button></td>`;
+                    tableBody.appendChild(showMoreRow);
+                    document.getElementById('showMoreBtn').addEventListener('click', () => populateTable(data, true));
+                }
+            };
+            
+             const showMatchSummary = (partidaName) => {
+                 const matchData = fullData.filter(row => row.partida === partidaName);
+                 if (matchData.length === 0) return;
+                 const summary = matchData.reduce((acc, row) => { acc.qty += row.quantidadeApostas; acc.valor += row.valorApostado; acc.ggr += row.ggr; return acc; }, { qty: 0, valor: 0, ggr: 0 });
+                 const rentabilidade = summary.valor > 0 ? summary.ggr / summary.valor : 0;
+                 document.getElementById('summaryModalTitle').textContent = `Resumo de: ${partidaName}`;
+                 document.getElementById('summaryQty').textContent = summary.qty;
+                 document.getElementById('summaryValor').textContent = formatCurrency(summary.valor);
+                 document.getElementById('summaryGGR').textContent = formatCurrency(summary.ggr);
+                 document.getElementById('summaryRentabilidade').textContent = formatPercent(rentabilidade);
+                 document.getElementById('summaryGGR').className = `font-bold ${summary.ggr >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                 document.getElementById('summaryRentabilidade').className = `font-bold ${rentabilidade >= 0 ? 'text-blue-400' : 'text-red-400'}`;
+                 document.getElementById('summaryModal').classList.remove('hidden');
+            };
+
+            const exportToCsv = () => {
+                const headers = ["Data", "Esporte", "País", "Competição", "Partida", "Quantidade Apostas", "Valor Apostado", "GGR", "Rentabilidade"];
+                const csvData = currentTableData.map(row => headers.map(h => `"${row[{'Data':'data','Esporte':'esporte','País':'pais','Competição':'competicao','Partida':'partida','Quantidade Apostas':'quantidadeApostas','Valor Apostado':'valorApostado','GGR':'ggr','Rentabilidade':'rentabilidade'}[h]]}"`).join(','));
+                const link = document.createElement("a");
+                link.setAttribute("href", URL.createObjectURL(new Blob([[headers.join(','), ...csvData].join('\n')], { type: 'text/csv;charset=utf-8;' })));
+                link.setAttribute("download", "dados_apostas.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            // INSERE O HTML VAZIO INICIALMENTE
+            const populateDashboardHTML = () => {
+                document.getElementById('filtersContainer').innerHTML = `<div class="lg:col-span-3 card"><h3 class="text-lg font-semibold text-white mb-4">Filtro Geral</h3><div class="flex flex-col sm:flex-row flex-wrap items-end gap-4"><div><label for="sportFilter" class="block text-sm font-medium text-gray-300 mb-1">Desporto</label><select id="sportFilter" class="filter-input w-full"></select></div><div><label for="startDate" class="block text-sm font-medium text-gray-300 mb-1">Data de Início</label><input type="date" id="startDate" class="filter-input w-full"></div><div><label for="endDate" class="block text-sm font-medium text-gray-300 mb-1">Data de Fim</label><input type="date" id="endDate" class="filter-input w-full"></div><div class="flex gap-2 w-full sm:w-auto"><button id="todayButton" class="action-button today-button w-1/2 sm:w-auto">Hoje</button><button id="clearButton" class="action-button clear-button w-1/2 sm:w-auto">Limpar</button></div></div></div><div class="card"><h3 class="text-lg font-semibold text-white mb-4">Selecionar Gráficos</h3><div id="chartSelector" class="space-y-2"><label class="flex items-center gap-x-3"><input type="checkbox" name="chartToggle" value="ggrPorCompeticao" class="chart-checkbox" checked><span>GGR por Competição</span></label><label class="flex items-center gap-x-3"><input type="checkbox" name="chartToggle" value="participacaoPais" class="chart-checkbox" checked><span>Participação por País</span></label><label class="flex items-center gap-x-3"><input type="checkbox" name="chartToggle" value="ggrTrend" class="chart-checkbox"><span>Tendência de GGR</span></label><label class="flex items-center gap-x-3"><input type="checkbox" name="chartToggle" value="performanceCompeticao" class="chart-checkbox"><span>Performance por Competição</span></label></div></div>`;
+                document.getElementById('dashboard-grid').innerHTML = `<h2 class="text-xl font-bold text-white md:col-span-2 lg:col-span-6">Painel de Performance</h2><div class="card text-center draggable-card md:col-span-1 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">Valor Total Apostado</h3><p id="totalValorApostado" class="text-3xl font-bold text-white mt-2">R$ 0,00</p></div><div class="card text-center draggable-card md:col-span-1 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">GGR Total (Lucro Bruto)</h3><p id="totalGGR" class="text-3xl font-bold text-green-400 mt-2">R$ 0,00</p></div><div class="card text-center draggable-card md:col-span-2 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">Rentabilidade Média</h3><p id="rentabilidadeMedia" class="text-3xl font-bold text-blue-400 mt-2">0.00%</p></div><div class="card text-center draggable-card md:col-span-1 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">Partida de Melhor Performance</h3><p id="highlightMelhorPerformance" class="highlight-value text-green-400 mt-2 h-14 flex items-center justify-center line-clamp-2">N/A</p></div><div class="card text-center draggable-card md:col-span-1 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">Partida de Pior Performance</h3><p id="highlightPiorPerformance" class="highlight-value text-red-400 mt-2 h-14 flex items-center justify-center line-clamp-2">N/A</p></div><div class="card text-center draggable-card md:col-span-2 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">País com Maior Volume</h3><p id="highlightMaiorVolume" class="highlight-value text-blue-400 mt-2">N/A</p></div><div id="ggrPorCompeticaoCard" class="card draggable-card md:col-span-2 lg:col-span-3"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold text-white">GGR por Competição</h3><button class="remove-chart-btn text-gray-500 hover:text-white" data-chart-id="ggrPorCompeticao"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button></div><div class="chart-container"><canvas id="ggrPorCompeticaoChart"></canvas></div></div><div id="participacaoPaisCard" class="card draggable-card md:col-span-2 lg:col-span-3"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold text-white">Participação por País</h3><button class="remove-chart-btn text-gray-500 hover:text-white" data-chart-id="participacaoPais"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button></div><div class="chart-container"><canvas id="participacaoPaisChart"></canvas></div></div><div id="ggrTrendCard" class="card hidden draggable-card md:col-span-2 lg:col-span-3"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold text-white">Tendência de GGR</h3><button class="remove-chart-btn text-gray-500 hover:text-white" data-chart-id="ggrTrend"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button></div><div class="chart-container"><canvas id="ggrTrendChart"></canvas></div></div><div id="performanceCompeticaoCard" class="card hidden draggable-card md:col-span-2 lg:col-span-3"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold text-white">Performance por Competição</h3><button class="remove-chart-btn text-gray-500 hover:text-white" data-chart-id="performanceCompeticao"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button></div><div class="chart-container"><canvas id="performanceCompeticaoChart"></canvas></div></div>`;
+                document.getElementById('table-container').innerHTML = `<div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4"><h3 class="text-lg font-semibold text-white">Análise Detalhada das Partidas</h3><button id="exportCsvBtn" class="action-button today-button flex items-center gap-2 text-sm w-full sm:w-auto justify-center"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg> Exportar CSV</button></div><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4"><div class="autocomplete-container"><input type="text" id="paisFilter" placeholder="Filtrar por País..." class="filter-input w-full"><div id="paisSuggestions" class="suggestions-list hidden"></div></div><div class="autocomplete-container"><input type="text" id="competicaoFilter" placeholder="Filtrar por Competição..." class="filter-input w-full"><div id="competicaoSuggestions" class="suggestions-list hidden"></div></div><div class="autocomplete-container"><input type="text" id="partidaFilter" placeholder="Procurar Partida..." class="filter-input w-full"><div id="partidaSuggestions" class="suggestions-list hidden"></div></div></div><div class="overflow-x-auto"><table class="w-full text-sm text-left text-gray-300"><thead class="text-xs text-gray-200 uppercase"><tr><th class="sortable px-4 py-3 cursor-pointer" data-column="data"><div class="flex items-center"><span>Data</span><svg class="sort-icon ml-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div></th><th class="px-4 py-3">Desporto</th><th class="px-4 py-3">País</th><th class="px-4 py-3">Competição</th><th class="px-4 py-3">Partida</th><th class="sortable px-4 py-3 cursor-pointer text-right" data-column="quantidadeApostas"><div class="flex items-center justify-end"><span>Qtd.</span><svg class="sort-icon ml-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div></th><th class="sortable px-4 py-3 cursor-pointer text-right" data-column="valorApostado"><div class="flex items-center justify-end"><span>Vlr. Apostado</span><svg class="sort-icon ml-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div></th><th class="sortable px-4 py-3 cursor-pointer text-right" data-column="ggr"><div class="flex items-center justify-end"><span>GGR</span><svg class="sort-icon ml-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div></th><th class="sortable px-4 py-3 cursor-pointer text-right" data-column="rentabilidade"><div class="flex items-center justify-end"><span>Rentab.</span><svg class="sort-icon ml-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg></div></th></tr></thead><tbody id="dataTableBody"></tbody></table></div>`;
+                document.getElementById('summaryModal').innerHTML = `<div class="card w-full max-w-md"><div class="flex justify-between items-center mb-4"><h3 id="summaryModalTitle" class="text-lg font-semibold text-white">Resumo</h3><button id="summaryModalClose" class="text-2xl font-bold leading-none text-gray-400 hover:text-white">&times;</button></div><div><div class="flex justify-between py-2 border-b border-gray-700"><span class="text-gray-400">Total de Apostas:</span><span id="summaryQty" class="font-bold">0</span></div><div class="flex justify-between py-2 border-b border-gray-700"><span class="text-gray-400">Valor Total Apostado:</span><span id="summaryValor" class="font-bold">R$ 0,00</span></div><div class="flex justify-between py-2 border-b border-gray-700"><span class="text-gray-400">GGR Total:</span><span id="summaryGGR" class="font-bold">R$ 0,00</span></div><div class="flex justify-between py-2"><span class="text-gray-400">Rentabilidade Total:</span><span id="summaryRentabilidade" class="font-bold">0.00%</span></div></div></div>`;
+            };
+        });
+    </script>
+</body>
+</html>
