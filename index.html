@@ -9,7 +9,7 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
-    <!-- PapaParse -->
+    <!-- PapaParse (Ainda pode ser útil para exportação, mas não para download) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
     <!-- SortableJS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -43,7 +43,7 @@
 </head>
 <body class="p-4 sm:p-6 md:p-8">
 
-    <!-- ==== TELA DE LOGIN ==== -->
+    <!-- ==== TELA DE LOGIN (Sem alterações) ==== -->
     <div id="loginContainer" class="min-h-screen flex flex-col items-center justify-center">
         <div class="w-full max-w-md">
             <div class="card p-8">
@@ -67,10 +67,9 @@
         </div>
     </div>
 
-    <!-- ==== CONTAINER DO DASHBOARD (INICIALMENTE OCULTO) ==== -->
+    <!-- ==== CONTAINER DO DASHBOARD (Sem alterações no HTML, apenas no JS que o popula) ==== -->
     <div id="dashboardContainer" class="hidden">
         <div id="loadingOverlay" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50"><div id="loadingSpinner" class="w-16 h-16 border-4 border-gray-700 rounded-full"></div></div>
-
         <div class="max-w-7xl mx-auto">
             <header class="mb-6 flex flex-col sm:flex-row justify-between items-center gap-4">
                 <h1 class="text-2xl sm:text-3xl font-bold text-white text-center sm:text-left">Dashboard de Análise de Apostas</h1>
@@ -79,33 +78,32 @@
                     <span id="toggleFiltersBtnText">Exibir Filtros e Opções</span>
                 </button>
             </header>
-
-            <div id="filtersContainer" class="hidden grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8"><!-- Conteúdo dos filtros será inserido via JS --></div>
-            <div id="dashboard-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6"><!-- Conteúdo dos cards e gráficos será inserido via JS --></div>
-            <div id="table-container" class="card mt-8"><!-- Conteúdo da tabela detalhada será inserido via JS --></div>
+            <div id="filtersContainer" class="hidden grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8"></div>
+            <div id="dashboard-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6"></div>
+            <div id="table-container" class="card mt-8"></div>
         </div>
-        
-        <div id="summaryModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden"><!-- Conteúdo do modal de resumo será inserido via JS --></div>
+        <div id="summaryModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50 hidden"></div>
     </div>
 
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // =================================================================
-            // ETAPA 1: LÓGICA DE LOGIN (MÉTODO SEGURO: POST)
+            // ETAPA 1: LÓGICA DE LOGIN (A chamada fetch foi alterada)
             // =================================================================
             const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxQ85fbGnRj9sWcBCgtG_amdYL9FysuojwFjlzAnB2F-Rymeuu-mdty7FWUM9yRG_2DAw/exec';
             
             const loginForm = document.getElementById('loginForm');
-            const loginButton = document.getElementById('loginButton');
-            const loginButtonText = document.getElementById('loginButtonText');
-            const loginSpinner = document.getElementById('loginSpinner');
-            const loginMessage = document.getElementById('loginMessage');
             const loginContainer = document.getElementById('loginContainer');
             const dashboardContainer = document.getElementById('dashboardContainer');
 
             loginForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                const loginMessage = document.getElementById('loginMessage');
+                const loginButton = document.getElementById('loginButton');
+                const loginButtonText = document.getElementById('loginButtonText');
+                const loginSpinner = document.getElementById('loginSpinner');
+                
                 loginMessage.textContent = '';
                 loginButtonText.classList.add('hidden');
                 loginSpinner.classList.remove('hidden');
@@ -115,32 +113,27 @@
                 const password = document.getElementById('password').value;
 
                 try {
-                    // Busca o IP do usuário primeiro
                     const ipResponse = await fetch('https://api.ipify.org?format=json');
                     const ipData = await ipResponse.json();
                     const userIp = ipData.ip || 'não encontrado';
 
-                    // ===== MUDANÇA PRINCIPAL: Usando o método POST =====
                     const response = await fetch(APPS_SCRIPT_URL, {
                         method: 'POST',
-                        // O cabeçalho é opcional para text/plain, mas é uma boa prática
-                        headers: {
-                          'Content-Type': 'text/plain;charset=utf-8', 
-                        },
-                        // Os dados são enviados no 'body', não na URL
-                        body: JSON.stringify({
-                          nome: username,
-                          senha: password,
-                          ip: userIp
-                        })
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ nome: username, senha: password, ip: userIp })
                     });
                     
                     const result = await response.json();
 
-                    if (result.status === 'success') {
+                    // =================================================
+                    // MUDANÇA PRINCIPAL NO FRONTEND
+                    // =================================================
+                    // Agora verificamos por 'result.data' em vez de 'result.dataSheetUrl'
+                    if (result.status === 'success' && result.data) {
                         loginContainer.classList.add('hidden');
                         dashboardContainer.classList.remove('hidden');
-                        fetchData(result.dataSheetUrl);
+                        // Chamamos a nova função que processa os dados recebidos diretamente
+                        processReceivedData(result.data);
                     } else {
                         throw new Error(result.message || 'Falha na autenticação.');
                     }
@@ -153,7 +146,7 @@
             });
 
             // =================================================================
-            // ETAPA 2: LÓGICA DO DASHBOARD (Permanece a mesma)
+            // ETAPA 2: LÓGICA DO DASHBOARD (Função de busca de dados foi alterada)
             // =================================================================
             let fullData = [], currentTableData = [];
             let chartInstances = {};
@@ -162,17 +155,14 @@
             let paisFilterInput, competicaoFilterInput, partidaFilterInput;
             let paisSuggestions, competicaoSuggestions, partidaSuggestions;
 
-            // FUNÇÕES AUXILIARES
             const formatCurrency = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
             const formatPercent = (v) => new Intl.NumberFormat('pt-BR', { style: 'percent', minimumFractionDigits: 2 }).format(v);
-            
             const parseDate = (d) => {
                 if (!d || typeof d !== 'string') return null;
                 if (/^\d{4}-\d{2}-\d{2}$/.test(d)) { const [year, month, day] = d.split('-'); return new Date(Date.UTC(year, month - 1, day)); }
                 if (/^\d{2}\/\d{2}\/\d{4}$/.test(d)) { const [day, month, year] = d.split('/'); return new Date(Date.UTC(year, month - 1, day)); }
                 return null;
             };
-
             const formatDateForDisplay = (dateObj) => {
                 if (!dateObj || !(dateObj instanceof Date) || isNaN(dateObj)) return 'N/A';
                 const day = String(dateObj.getUTCDate()).padStart(2, '0');
@@ -181,37 +171,35 @@
                 return `${day}/${month}/${year}`;
             };
             
-            // FUNÇÃO PRINCIPAL DE CARREGAMENTO DE DADOS
-            const fetchData = (googleSheetUrl) => {
-                populateDashboardHTML();
+            /**
+             * NOVA FUNÇÃO: Processa os dados JSON recebidos diretamente do Apps Script.
+             * Substitui a antiga função `fetchData` que usava Papa.parse para baixar de uma URL.
+             */
+            const processReceivedData = (receivedData) => {
+                populateDashboardHTML(); // Monta o esqueleto do dashboard
 
-                Papa.parse(googleSheetUrl, {
-                    download: true, header: true, skipEmptyLines: true,
-                    complete: (results) => {
-                        fullData = results.data.map(row => ({
-                            dateObject: parseDate(row['Data']),
-                            data: formatDateForDisplay(parseDate(row['Data'])),
-                            esporte: row['Esporte'] || 'N/A',
-                            pais: row['Pais'] || 'N/A',
-                            competicao: row['Competicao'] || 'N/A',
-                            partida: row['Partida'] || 'N/A',
-                            quantidadeApostas: parseInt(row['Quantidade Apostas'], 10) || 0,
-                            valorApostado: parseFloat(row['Valor Apostado']) || 0,
-                            ggr: parseFloat(row['GGR']) || 0,
-                            rentabilidade: parseFloat(row['Rentabilidade']) || 0
-                        }));
-                        
-                        initializeDashboard();
-                        document.getElementById('loadingOverlay').style.display = 'none';
-                    },
-                    error: (err) => {
-                        console.error("Erro ao buscar dados do Google Sheet:", err);
-                        alert("Não foi possível carregar os dados do dashboard. Verifique a consola para mais detalhes.");
-                    }
-                });
+                // Mapeia os dados recebidos para o formato que o dashboard espera.
+                fullData = receivedData.map(row => ({
+                    dateObject: parseDate(row['Data']),
+                    data: formatDateForDisplay(parseDate(row['Data'])),
+                    esporte: row['Esporte'] || 'N/A',
+                    pais: row['Pais'] || 'N/A',
+                    competicao: row['Competicao'] || 'N/A',
+                    partida: row['Partida'] || 'N/A',
+                    quantidadeApostas: parseInt(row['Quantidade Apostas'], 10) || 0,
+                    valorApostado: parseFloat(row['Valor Apostado']) || 0,
+                    ggr: parseFloat(row['GGR']) || 0,
+                    rentabilidade: parseFloat(row['Rentabilidade']) || 0
+                }));
+                
+                initializeDashboard();
+                document.getElementById('loadingOverlay').style.display = 'none';
             };
 
-            // INICIALIZAÇÃO E EVENTOS DO DASHBOARD
+            // O resto do seu código de dashboard (initializeDashboard, runFilters, createChart, etc.)
+            // permanece exatamente o mesmo. Nenhuma outra alteração é necessária aqui.
+            // Vou colar o resto do código sem alterações para manter o arquivo completo.
+
             const initializeDashboard = () => {
                 paisFilterInput = document.getElementById('paisFilter');
                 competicaoFilterInput = document.getElementById('competicaoFilter');
@@ -219,14 +207,12 @@
                 paisSuggestions = document.getElementById('paisSuggestions');
                 competicaoSuggestions = document.getElementById('competicaoSuggestions');
                 partidaSuggestions = document.getElementById('partidaSuggestions');
-
                 document.getElementById('toggleFiltersBtn').addEventListener('click', () => {
                     const container = document.getElementById('filtersContainer');
                     const btnText = document.getElementById('toggleFiltersBtnText');
                     container.classList.toggle('hidden');
                     btnText.textContent = container.classList.contains('hidden') ? 'Exibir Filtros e Opções' : 'Ocultar Filtros e Opções';
                 });
-
                 document.getElementById('sportFilter').addEventListener('change', runFilters);
                 document.getElementById('startDate').addEventListener('change', runFilters);
                 document.getElementById('endDate').addEventListener('change', runFilters);
@@ -244,38 +230,29 @@
                     });
                 });
                 document.getElementById('exportCsvBtn').addEventListener('click', exportToCsv);
-                
                 paisFilterInput.addEventListener('input', runFilters);
                 competicaoFilterInput.addEventListener('input', runFilters);
                 partidaFilterInput.addEventListener('input', runFilters);
-                
                 populateSportFilter();
-                
                 const grid = document.getElementById('dashboard-grid');
                 new Sortable(grid, { animation: 150, handle: '.draggable-card', ghostClass: 'sortable-ghost' });
-
                 setupAutocomplete(paisFilterInput, paisSuggestions, () => Array.from(availablePaises));
                 setupAutocomplete(competicaoFilterInput, competicaoSuggestions, () => Array.from(availableCompeticoes));
                 setupAutocomplete(partidaFilterInput, partidaSuggestions, () => Array.from(availablePartidas));
-
                 document.addEventListener('click', (e) => { if (!e.target.closest('.autocomplete-container')) { hideAllSuggestions(); } });
-
                 runFilters();
             };
-
             const populateSportFilter = () => {
                 const sportFilter = document.getElementById('sportFilter');
                 const sports = ['Todos os Desportos', ...new Set(fullData.map(d => d.esporte).filter(Boolean))];
                 sportFilter.innerHTML = sports.map(sport => `<option value="${sport}">${sport}</option>`).join('');
             };
-            
             const handleSort = (e) => {
                 const column = e.currentTarget.dataset.column;
                 sortState.direction = (sortState.column === column && sortState.direction === 'desc') ? 'asc' : 'desc';
                 sortState.column = column;
                 runFilters();
             };
-
             const setupAutocomplete = (input, suggestionsContainer, getSuggestions) => {
                 const displayHandler = () => {
                     const query = input.value.toLowerCase();
@@ -285,7 +262,6 @@
                 input.addEventListener('input', displayHandler);
                 input.addEventListener('focus', displayHandler);
             };
-
             const displaySuggestions = (suggestions, container, input) => {
                 container.innerHTML = '';
                 if (suggestions.length === 0) { container.classList.add('hidden'); return; }
@@ -302,21 +278,17 @@
                 });
                 container.classList.remove('hidden');
             };
-
             const hideAllSuggestions = () => {
                 if (paisSuggestions) paisSuggestions.classList.add('hidden');
                 if (competicaoSuggestions) competicaoSuggestions.classList.add('hidden');
                 if (partidaSuggestions) partidaSuggestions.classList.add('hidden');
             };
-            
             const runFilters = () => {
                 let filteredData = fullData;
-
                 const selectedSport = document.getElementById('sportFilter').value;
                 if (selectedSport && selectedSport !== 'Todos os Desportos') {
                     filteredData = filteredData.filter(row => row.esporte === selectedSport);
                 }
-
                 const startDateStr = document.getElementById('startDate').value;
                 const endDateStr = document.getElementById('endDate').value;
                 if (startDateStr && endDateStr) {
@@ -324,24 +296,19 @@
                     const endDate = new Date(endDateStr + 'T23:59:59Z');
                     filteredData = filteredData.filter(row => row.dateObject && row.dateObject >= startDate && row.dateObject <= endDate);
                 }
-                
                 availablePaises = new Set(filteredData.map(d => d.pais).filter(Boolean));
                 availableCompeticoes = new Set(filteredData.map(d => d.competicao).filter(Boolean));
                 availablePartidas = new Set(filteredData.map(d => d.partida).filter(Boolean));
-
                 const paisQuery = document.getElementById('paisFilter').value.toLowerCase();
                 const competicaoQuery = document.getElementById('competicaoFilter').value.toLowerCase();
                 const partidaQuery = document.getElementById('partidaFilter').value.toLowerCase();
-                
                 let tableFilteredData = filteredData;
                 if (paisQuery) tableFilteredData = tableFilteredData.filter(r => r.pais && r.pais.toLowerCase().includes(paisQuery));
                 if (competicaoQuery) tableFilteredData = tableFilteredData.filter(r => r.competicao && r.competicao.toLowerCase().includes(competicaoQuery));
                 if (partidaQuery) tableFilteredData = tableFilteredData.filter(r => r.partida && r.partida.toLowerCase().includes(partidaQuery));
-
                 currentTableData = sortData(tableFilteredData, sortState);
                 updateDashboard(filteredData, currentTableData, startDateStr, endDateStr);
             };
-
             const sortData = (data, state) => {
                 const { column, direction } = state;
                 return [...data].sort((a, b) => {
@@ -352,7 +319,6 @@
                     return 0;
                 });
             };
-            
             const filterToday = () => {
                 const today = new Date();
                 const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
@@ -360,7 +326,6 @@
                 document.getElementById('endDate').value = todayStr;
                 runFilters();
             };
-
             const clearAllFilters = () => {
                 document.getElementById('sportFilter').value = 'Todos os Desportos';
                 document.getElementById('startDate').value = ''; document.getElementById('endDate').value = '';
@@ -368,35 +333,29 @@
                 sortState = { column: 'data', direction: 'desc' };
                 runFilters();
             };
-
             const updateDashboard = (chartData, tableData, startDateStr, endDateStr) => {
                 updateKPIs(chartData);
                 updateHighlights(chartData);
                 updateChartTitles(startDateStr, endDateStr);
-
                 const selectedCharts = [...document.querySelectorAll('#chartSelector input:checked')].map(cb => cb.value);
                 Object.keys(chartInstances).forEach(key => {
                     if (chartInstances[key]) chartInstances[key].destroy();
                     delete chartInstances[key];
                     document.getElementById(`${key}Card`).classList.add('hidden');
                 });
-                
                 if (selectedCharts.includes('ggrPorCompeticao')) createGGRChart(chartData);
                 if (selectedCharts.includes('participacaoPais')) createPaisChart(chartData);
                 if (selectedCharts.includes('ggrTrend')) createGGRTrendChart(chartData);
                 if (selectedCharts.includes('performanceCompeticao')) createPerformanceChart(chartData);
-                
                 populateTable(tableData);
                 updateSortHeaders();
             };
-            
             const updateSortHeaders = () => {
                 document.querySelectorAll('.sortable').forEach(header => {
                     header.classList.remove('sorted', 'asc', 'desc');
                     if (header.dataset.column === sortState.column) header.classList.add('sorted', sortState.direction);
                 });
             };
-
             const updateKPIs = (data) => {
                 const valor = data.reduce((s, r) => s + r.valorApostado, 0);
                 const ggr = data.reduce((s, r) => s + r.ggr, 0);
@@ -405,7 +364,6 @@
                 document.getElementById('totalGGR').textContent = formatCurrency(ggr);
                 document.getElementById('rentabilidadeMedia').textContent = formatPercent(rentabilidade);
             };
-            
             const updateHighlights = (data) => {
                 const byPartida = data.reduce((acc, row) => {
                     if(!row.partida) return acc;
@@ -413,22 +371,17 @@
                     acc[row.partida].ggr += row.ggr; acc[row.partida].valor += row.valorApostado;
                     return acc;
                 }, {});
-
                 const performanceScores = Object.entries(byPartida).map(([name, values]) => ({ name, score: (values.valor > 0 ? values.ggr / values.valor : 0) * Math.log10(values.valor + 1) })).filter(item => isFinite(item.score) && item.score !== 0).sort((a,b) => b.score - a.score);
-                
                 const melhorEl = document.getElementById('highlightMelhorPerformance');
                 const piorEl = document.getElementById('highlightPiorPerformance');
-
                 melhorEl.textContent = performanceScores.length > 0 ? performanceScores[0].name : 'N/A';
                 melhorEl.title = performanceScores.length > 0 ? performanceScores[0].name : '';
                 piorEl.textContent = performanceScores.length > 0 ? performanceScores[performanceScores.length - 1].name : 'N/A';
                 piorEl.title = performanceScores.length > 0 ? performanceScores[performanceScores.length - 1].name : '';
-
                 const byPais = data.reduce((acc, row) => { if(row.pais) acc[row.pais] = (acc[row.pais] || 0) + row.valorApostado; return acc; }, {});
                 const paisesOrdenados = Object.entries(byPais).sort(([,a],[,b]) => b-a);
                 document.getElementById('highlightMaiorVolume').textContent = paisesOrdenados.length > 0 ? paisesOrdenados[0][0] : 'N/A';
             };
-            
             const updateChartTitles = (startDateStr, endDateStr) => {
                 const formatDisplayDate = (d) => {
                     if (!d) return '';
@@ -441,12 +394,10 @@
                 document.querySelector('#ggrTrendCard h3').textContent = 'Tendência de GGR vs. Valor Apostado' + dateSubtitle;
                 document.querySelector('#performanceCompeticaoCard h3').textContent = 'Top 5 Competições por Performance' + dateSubtitle;
             };
-
             const createChart = (id, cardId, config) => {
                  document.getElementById(cardId).classList.remove('hidden');
                  chartInstances[id.replace('Chart', '')] = new Chart(document.getElementById(id).getContext('2d'), config);
             };
-
             const createGGRChart = (data) => {
                 const byCompeticao = data.reduce((acc, r) => { 
                     if(r.competicao && r.pais) { const key = `${r.pais} - ${r.competicao}`; if(!acc[key]) acc[key] = { ggr: 0, valor: 0 }; acc[key].ggr += r.ggr; acc[key].valor += r.valorApostado; } return acc; }, {});
@@ -455,20 +406,17 @@
                 gradient.addColorStop(0, 'rgba(52, 211, 153, 0.7)'); gradient.addColorStop(1, 'rgba(16, 185, 129, 0.1)');
                 createChart('ggrPorCompeticaoChart', 'ggrPorCompeticaoCard', { type: 'bar', data: { labels: sorted.map(i=>i[0]), datasets: [{ label: 'GGR', data: sorted.map(i=>i[1].ggr), backgroundColor: gradient, borderColor: '#34d399', borderWidth: 1, borderRadius: 5 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#111827', callbacks: { label: (c) => [`GGR: ${formatCurrency(sorted[c.dataIndex][1].ggr)}`, `Rentabilidade: ${formatPercent(sorted[c.dataIndex][1].valor > 0 ? sorted[c.dataIndex][1].ggr / sorted[c.dataIndex][1].valor : 0)}`, `Volume: ${formatCurrency(sorted[c.dataIndex][1].valor)}`] } } }, scales: { y: { ticks: { color: '#9ca3af', callback: v => formatCurrency(v) }, grid: { color: '#374151' } }, x: { ticks: { color: '#9ca3af' }, grid: { color: 'transparent' } } } } });
             };
-
             const createPaisChart = (data) => {
                 const byPais = data.reduce((acc, r) => { if(r.pais) acc[r.pais] = (acc[r.pais] || 0) + r.quantidadeApostas; return acc; }, {});
                 const sorted = Object.entries(byPais).sort(([,a],[,b]) => b-a);
                 const totalApostas = sorted.reduce((sum, item) => sum + item[1], 0);
                 createChart('participacaoPaisChart', 'participacaoPaisCard', { type: 'doughnut', data: { labels: sorted.map(i=>i[0]), datasets: [{ data: sorted.map(i=>i[1]), backgroundColor: ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#60a5fa', '#f87171'], borderWidth: 2, borderColor: '#1f2937'}] }, options: { responsive: true, maintainAspectRatio: false, cutout: '60%', plugins: { legend: { position: 'bottom', labels: { color: '#d1d5db' } }, tooltip: { backgroundColor: '#111827', callbacks: { label: (c) => ` ${c.label}: ${c.raw} apostas`, afterLabel: (c) => `Participação: ${formatPercent(c.raw / totalApostas)}` } } } } });
             };
-
             const createGGRTrendChart = (data) => {
                 const groupedByDay = data.reduce((acc, row) => { if(!row.dateObject) return acc; const day = row.dateObject.toISOString().split('T')[0]; if(!acc[day]) acc[day] = { ggr: 0, valor: 0 }; acc[day].ggr += row.ggr; acc[day].valor += row.valorApostado; return acc; }, {});
                 const sortedDays = Object.keys(groupedByDay).sort();
                 createChart('ggrTrendChart', 'ggrTrendCard', { type: 'line', data: { labels: sortedDays, datasets: [ { label: 'GGR', data: sortedDays.map(d => groupedByDay[d].ggr), borderColor: '#34d399', backgroundColor: '#34d39920', yAxisID: 'yGGR', tension: 0.2, pointBackgroundColor: '#34d399', pointRadius: 3 }, { label: 'Valor Apostado', data: sortedDays.map(d => groupedByDay[d].valor), borderColor: '#60a5fa', backgroundColor: '#60a5fa20', yAxisID: 'yValor', tension: 0.2, pointBackgroundColor: '#60a5fa', pointRadius: 3 } ] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day', tooltipFormat: 'dd/MM/yyyy' }, ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }, yGGR: { position: 'left', ticks: { color: '#9ca3af', callback: v => formatCurrency(v) }, grid: { color: '#374151' } }, yValor: { position: 'right', ticks: { color: '#9ca3af', callback: v => formatCurrency(v) }, grid: { drawOnChartArea: false } } }, plugins: { legend: { labels: { color: '#d1d5db' } }, tooltip: { backgroundColor: '#111827' } } } });
             };
-            
             const createPerformanceChart = (data) => {
                  const byCompeticao = data.reduce((acc, row) => { if(row.competicao && row.pais) { const key = `${r.pais} - ${r.competicao}`; if(!acc[key]) acc[key] = { ggr: 0, valor: 0 }; acc[key].ggr += row.ggr; acc[key].valor += row.valorApostado; } return acc; }, {});
                  const performanceScores = Object.entries(byCompeticao).map(([name, values]) => ({ name, score: (values.valor > 0 ? values.ggr / values.valor : 0) * Math.log10(values.valor + 1), rentabilidade: values.valor > 0 ? values.ggr / values.valor : 0, valor: values.valor })).filter(item => isFinite(item.score)).sort((a,b) => b.score - a.score);
@@ -477,7 +425,6 @@
                  gradient.addColorStop(0, 'rgba(59, 130, 246, 0.1)'); gradient.addColorStop(1, 'rgba(59, 130, 246, 0.7)');
                  createChart('performanceCompeticaoChart', 'performanceCompeticaoCard', { type: 'bar', data: { labels: top5.map(c => c.name), datasets: [{ label: 'Índice de Performance', data: top5.map(c => c.score), backgroundColor: gradient, borderColor: '#3b82f6', borderWidth: 1, borderRadius: 5 }] }, options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: '#111827', callbacks: { title: (c) => c[0].label, label: (c) => { const i = top5[c.dataIndex]; return [`Índice: ${i.score.toFixed(2)}`, `Rentab.: ${formatPercent(i.rentabilidade)}`, `Volume: ${formatCurrency(i.valor)}` ]; } } } }, scales: { x: { ticks: { color: '#9ca3af' }, grid: { color: '#374151' } }, y: { ticks: { color: '#9ca3af' } } } } });
             };
-
             const populateTable = (data, showAll = false) => {
                 const tableBody = document.getElementById('dataTableBody');
                 tableBody.innerHTML = '';
@@ -496,8 +443,7 @@
                     document.getElementById('showMoreBtn').addEventListener('click', () => populateTable(data, true));
                 }
             };
-            
-             const showMatchSummary = (partidaName) => {
+            const showMatchSummary = (partidaName) => {
                  const matchData = fullData.filter(row => row.partida === partidaName);
                  if (matchData.length === 0) return;
                  const summary = matchData.reduce((acc, row) => { acc.qty += row.quantidadeApostas; acc.valor += row.valorApostado; acc.ggr += row.ggr; return acc; }, { qty: 0, valor: 0, ggr: 0 });
@@ -511,7 +457,6 @@
                  document.getElementById('summaryRentabilidade').className = `font-bold ${rentabilidade >= 0 ? 'text-blue-400' : 'text-red-400'}`;
                  document.getElementById('summaryModal').classList.remove('hidden');
             };
-
             const exportToCsv = () => {
                 const headers = ["Data", "Esporte", "País", "Competição", "Partida", "Quantidade Apostas", "Valor Apostado", "GGR", "Rentabilidade"];
                 const csvData = currentTableData.map(row => headers.map(h => `"${row[{'Data':'data','Esporte':'esporte','País':'pais','Competição':'competicao','Partida':'partida','Quantidade Apostas':'quantidadeApostas','Valor Apostado':'valorApostado','GGR':'ggr','Rentabilidade':'rentabilidade'}[h]]}"`).join(','));
@@ -522,8 +467,6 @@
                 link.click();
                 document.body.removeChild(link);
             };
-
-            // INSERE O HTML VAZIO INICIALMENTE
             const populateDashboardHTML = () => {
                 document.getElementById('filtersContainer').innerHTML = `<div class="lg:col-span-3 card"><h3 class="text-lg font-semibold text-white mb-4">Filtro Geral</h3><div class="flex flex-col sm:flex-row flex-wrap items-end gap-4"><div><label for="sportFilter" class="block text-sm font-medium text-gray-300 mb-1">Desporto</label><select id="sportFilter" class="filter-input w-full"></select></div><div><label for="startDate" class="block text-sm font-medium text-gray-300 mb-1">Data de Início</label><input type="date" id="startDate" class="filter-input w-full"></div><div><label for="endDate" class="block text-sm font-medium text-gray-300 mb-1">Data de Fim</label><input type="date" id="endDate" class="filter-input w-full"></div><div class="flex gap-2 w-full sm:w-auto"><button id="todayButton" class="action-button today-button w-1/2 sm:w-auto">Hoje</button><button id="clearButton" class="action-button clear-button w-1/2 sm:w-auto">Limpar</button></div></div></div><div class="card"><h3 class="text-lg font-semibold text-white mb-4">Selecionar Gráficos</h3><div id="chartSelector" class="space-y-2"><label class="flex items-center gap-x-3"><input type="checkbox" name="chartToggle" value="ggrPorCompeticao" class="chart-checkbox" checked><span>GGR por Competição</span></label><label class="flex items-center gap-x-3"><input type="checkbox" name="chartToggle" value="participacaoPais" class="chart-checkbox" checked><span>Participação por País</span></label><label class="flex items-center gap-x-3"><input type="checkbox" name="chartToggle" value="ggrTrend" class="chart-checkbox"><span>Tendência de GGR</span></label><label class="flex items-center gap-x-3"><input type="checkbox" name="chartToggle" value="performanceCompeticao" class="chart-checkbox"><span>Performance por Competição</span></label></div></div>`;
                 document.getElementById('dashboard-grid').innerHTML = `<h2 class="text-xl font-bold text-white md:col-span-2 lg:col-span-6">Painel de Performance</h2><div class="card text-center draggable-card md:col-span-1 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">Valor Total Apostado</h3><p id="totalValorApostado" class="text-3xl font-bold text-white mt-2">R$ 0,00</p></div><div class="card text-center draggable-card md:col-span-1 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">GGR Total (Lucro Bruto)</h3><p id="totalGGR" class="text-3xl font-bold text-green-400 mt-2">R$ 0,00</p></div><div class="card text-center draggable-card md:col-span-2 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">Rentabilidade Média</h3><p id="rentabilidadeMedia" class="text-3xl font-bold text-blue-400 mt-2">0.00%</p></div><div class="card text-center draggable-card md:col-span-1 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">Partida de Melhor Performance</h3><p id="highlightMelhorPerformance" class="highlight-value text-green-400 mt-2 h-14 flex items-center justify-center line-clamp-2">N/A</p></div><div class="card text-center draggable-card md:col-span-1 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">Partida de Pior Performance</h3><p id="highlightPiorPerformance" class="highlight-value text-red-400 mt-2 h-14 flex items-center justify-center line-clamp-2">N/A</p></div><div class="card text-center draggable-card md:col-span-2 lg:col-span-2"><h3 class="text-gray-400 text-sm font-medium">País com Maior Volume</h3><p id="highlightMaiorVolume" class="highlight-value text-blue-400 mt-2">N/A</p></div><div id="ggrPorCompeticaoCard" class="card draggable-card md:col-span-2 lg:col-span-3"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold text-white">GGR por Competição</h3><button class="remove-chart-btn text-gray-500 hover:text-white" data-chart-id="ggrPorCompeticao"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button></div><div class="chart-container"><canvas id="ggrPorCompeticaoChart"></canvas></div></div><div id="participacaoPaisCard" class="card draggable-card md:col-span-2 lg:col-span-3"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold text-white">Participação por País</h3><button class="remove-chart-btn text-gray-500 hover:text-white" data-chart-id="participacaoPais"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button></div><div class="chart-container"><canvas id="participacaoPaisChart"></canvas></div></div><div id="ggrTrendCard" class="card hidden draggable-card md:col-span-2 lg:col-span-3"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold text-white">Tendência de GGR</h3><button class="remove-chart-btn text-gray-500 hover:text-white" data-chart-id="ggrTrend"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button></div><div class="chart-container"><canvas id="ggrTrendChart"></canvas></div></div><div id="performanceCompeticaoCard" class="card hidden draggable-card md:col-span-2 lg:col-span-3"><div class="flex justify-between items-center mb-4"><h3 class="text-lg font-semibold text-white">Performance por Competição</h3><button class="remove-chart-btn text-gray-500 hover:text-white" data-chart-id="performanceCompeticao"><svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button></div><div class="chart-container"><canvas id="performanceCompeticaoChart"></canvas></div></div>`;
